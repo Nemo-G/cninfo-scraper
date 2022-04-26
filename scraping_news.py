@@ -1,13 +1,29 @@
-from json import JSONEncoder
 import xlsxwriter
 import requests
-import time
 from datetime import date, timedelta, datetime
-
 today = date.today()
 yesterday = today - timedelta(days=1)
 timePattern = "%Y-%m-%d"
+# definition for plate
+plates = {
+	'深圳主板': 'szmb',
+	'创业板':  'szcy',
+}
+
+########################## 查询条件  #################################
+# 当前板块
+activePlateKey = '创业板'
+
+# Passed as query params
+sortName, sortType = 'code', 'desc'
+
+# d0 means start date, d1 means end date
 d0, d1 = yesterday.strftime(timePattern), yesterday.strftime(timePattern)
+
+####################################################################
+
+
+
 
 url = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
 headers = {
@@ -21,7 +37,7 @@ headers = {
     # "Referrer-Policy": "strict-origin-when-cross-origin"
   }
 # Create an new Excel file and add a worksheet.
-workbook = xlsxwriter.Workbook("%s~%s.xlsx" % (d0, d1))
+workbook = xlsxwriter.Workbook("[%s~%s]_%s%s-%s_%d.xlsx" % (d0, d1, activePlateKey, sortName, sortType, datetime.now().timestamp()))
 worksheet = workbook.add_worksheet()
 worksheetRow = 0
 pageNum = 1
@@ -33,7 +49,8 @@ worksheet.write(0, 2, "公告标题")
 worksheet.write(0, 3, "PDF link")
 worksheet.write(0, 4, "公告时间")
 while(1):
-	payload = "pageNum=%d&pageSize=30&column=szse&tabName=fulltext&plate=szmb&stock=&searchkey=&secid=&category=&trade=&seDate=%s~%s&sortName=&sortType=&isHLtitle=true" % (pageNum, d0, d1)
+	payload = "pageNum=%d&pageSize=30&column=szse&tabName=fulltext&plate=%s&stock=&searchkey=&secid=&category=&trade" \
+			  "=&seDate=%s~%s&sortName=%s&sortType=%s&isHLtitle=true" % (pageNum, plates[activePlateKey], d0, d1, sortName, sortType)
 	
 	r = requests.post(url, data=bytes(payload, 'UTF-8'), headers=headers)
 	if r.status_code != requests.codes.ok:
@@ -56,10 +73,14 @@ while(1):
 	
 	print("Writing page %d, %d records added to sheet" % (pageNum, worksheetRow))
 	# in case website blocks us for too frequent query
-	time.sleep(0.1)
 	pageNum += 1
-	if data['hasMore'] == False:
+
+	# It turns out that data will repeat the first page after page 100(records 3000).
+	# So we take at most 3000
+	if not data['hasMore'] or worksheetRow >= 3000:
 		break
+	#if worksheetRow >= data['totalRecordNum']: #not data['hasMore'] or pageNum > data['totalpages']
+	#	break
 
 
 workbook.close()
